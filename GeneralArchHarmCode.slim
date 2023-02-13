@@ -1,0 +1,235 @@
+initialize() {
+	initializeSLiMModelType("nonWF");
+	initializeSex("A");
+	defineConstant("b", 50);	// birth rate
+	defineConstant("r", 0.5);	// sr
+	defineConstant("d", 0.8);	// efficacy of female resistance
+	defineConstant("k", 2);	// effect of male harm
+	defineConstant("mu", 0.002);	// carrying capacity	
+	defineConstant("u", 1);	// mate competition
+	defineConstant("CalphaM", 1); //intrinsic male baseline cost
+	defineConstant("CalphaF",1); //intrinsic female baseline cost
+	defineConstant("Kalpha", 1); //baseline condition sensitivity
+	defineConstant("CsexM", 1); //intrnisic male trait cost
+	defineConstant("CsexF", 1); //intrinsic female trait cost
+	defineConstant("Ksex", 1); //trait condition sensitivity
+	defineConstant("tvar", 0.005); //gaussian deviate
+	defineConstant("s", 0.5); // condition cost of mutation
+	defineConstant("sb", exp(CalphaM/(1+Kalpha))); //basline male survival
+	defineConstant("muR", 0.0015);  //condition mutation rate
+	defineConstant("rg", 1); //proportion of share male/female condition genes
+	defineConstant("nlociC", 50); //number of condition loci
+	defineConstant("male_loci",sort(sample(seqLen(asInteger(nlociC*(1+(1-rg)))), nlociC)));
+	female_SS = sort(seqLen(asInteger(nlociC*(1+(1-rg))))[match(seqLen(asInteger(nlociC*(1+(1-rg)))),male_loci)<0]);
+	defineConstant("female_loci",sort(c(sample(male_loci, nlociC-length(female_SS)),female_SS))); //allocate male and female specific loci (if rg<1)
+	initializeMutationRate(c(0.999999,muR),c(3,3+ asInteger(nlociC*(1+(1-rg)))));
+	initializeMutationType("m1", 0.5, "n", 0.0, tvar);
+	initializeMutationType("m2", 0.5, "n", 0.0, tvar);
+	initializeMutationType("m3", 0.5, "n", 0.0, tvar);
+	initializeMutationType("m4", 0.5, "n", 0.0, tvar);
+	initializeMutationType("m5", 0.5, "f", 1-s);
+	initializeMutationType("m6", 0.5, "n", 0.0, tvar);
+	initializeGenomicElementType("g1", m1, 1);
+	initializeGenomicElementType("g2", m2, 1);
+	initializeGenomicElementType("g3", m3, 1);
+	initializeGenomicElementType("g4", m4, 1);
+	initializeGenomicElementType("g5", m5, 1);
+	initializeGenomicElement(g1, 0, 0);
+	initializeGenomicElement(g2, 1, 1);
+	initializeGenomicElement(g3, 2, 2);
+	initializeGenomicElement(g4, 3, 3);
+	initializeGenomicElement(g5, 4, 3+ asInteger(nlociC*(1+(1-rg))));
+	initializeRecombinationRate(c(0,0.5),c(3,3+ asInteger(nlociC*(1+(1-rg)))));
+	m1.convertToSubstitution=F;
+	m2.convertToSubstitution=F;
+	m3.convertToSubstitution=F;
+	m4.convertToSubstitution=F;
+	m5.convertToSubstitution=F;
+	m1.mutationStackPolicy="l";
+	m2.mutationStackPolicy="l";
+	m3.mutationStackPolicy="l";
+	m4.mutationStackPolicy="l";
+	m5.mutationStackPolicy="l";
+}
+mutation(m1) {
+	newmut = mut.selectionCoeff + genome.sumOfMutationsOfType(m1);
+	mut.setSelectionCoeff(newmut);
+	
+	return T;
+}
+
+mutation(m2) {
+	newmut = mut.selectionCoeff + genome.sumOfMutationsOfType(m2);
+	mut.setSelectionCoeff(newmut);
+	
+	return T;
+}
+
+mutation(m3) {
+	newmut = mut.selectionCoeff + genome.sumOfMutationsOfType(m3);
+	mut.setSelectionCoeff(newmut);
+	
+	return T;
+}
+mutation(m4) {
+	newmut = mut.selectionCoeff + genome.sumOfMutationsOfType(m4);
+	mut.setSelectionCoeff(newmut);
+	
+	return T;
+}
+mutation(m5) {
+	mut.setSelectionCoeff(sample(c(1.0,0.0),1,weights=c(0.9,0.1)));
+	return T;
+}
+
+
+mutationEffect(m1) { return 1.0; }
+mutationEffect(m2) { return 1.0; }
+mutationEffect(m3) { return 1.0; }
+mutationEffect(m4) { return 1.0; }
+mutationEffect(m5) { return 1.0; }
+mutationEffect(m6) { return 1.0; }
+
+// each individual reproduces itself once
+reproduction(p1,"F") {
+	males = sim.subpopulations.subsetIndividuals(sex = "M");
+	Nfems = sim.subpopulations.subsetIndividuals(sex = "F").size();
+	harm = males.getValue("phenotypeM");
+	if(mean(harm)==0){
+		weights = 1/males.size();
+	} else {
+		weights = harm^u;
+	}
+	resistance = individual.getValue("phenotypeF");
+	condition = individual.getValue("condition");
+	fert = b/(1+mu*Nfems);
+	alphaFert = CalphaF/(1+Kalpha*condition);
+	sexFert = CsexF/(1+Ksex*condition);
+	C = exp(-(alphaFert+sexFert*resistance));
+	dam = exp(-sim.getValue("eta")/(1+d*resistance));
+	if(sim.cycle==1){
+		Fert = rpois(1,b);
+	} else {
+		Fert = rpois(1,fert*C*dam);
+	}
+	for(i in seqLen(Fert)){
+		subpop.addCrossed(individual,sample(males,1,weights=weights),sex=r);
+	}
+}
+
+modifyChild() {
+	if(child.sex=="M"){	
+	muts = length(child.genomes.mutationsOfType(m5)[match(child.genomes.mutationsOfType(m5).position, male_loci)>=0]);
+	} else {
+	muts = length(child.genomes.mutationsOfType(m5)[match(child.genomes.mutationsOfType(m5).position, female_loci)>=0]);
+	}
+	genetic_cond = (1-0.5)^(muts/10);
+	genetic_cond[genetic_cond<0]=0;
+	genetic_cond[genetic_cond>1]=1;
+	child.setValue("condition",genetic_cond);
+	return T;
+}
+
+1 early() {
+	sim.addSubpop("p1", 1000);
+	females = sim.subpopulations.subsetIndividuals(sex="F");
+	males = sim.subpopulations.subsetIndividuals(sex="M");
+	sim.subpopulations.individuals.setValue("condition",1);
+	sim.setValue("eta",0);
+}
+
+early() {
+	sim.subpopulations.individuals.fitnessScaling=0;
+	juveniles = sim.subpopulations.subsetIndividuals(maxAge=0);
+	juveniles.fitnessScaling = 1;
+	females = juveniles[juveniles.sex=="F"];
+	males = juveniles[juveniles.sex=="M"];
+	
+	nm = males.size();
+	nf = females.size();
+	m_cond = mean(males.getValue("condition"));
+	for (ind in males)
+	{
+		phenotypeM = ind.sumOfMutationsOfType(m1)+ind.sumOfMutationsOfType(m2)*ind.getValue("condition");
+		if(phenotypeM<0){
+			phenotypeM = 0;
+		}
+		if(phenotypeM+0.000000001>=0){
+			ind.setValue("phenotypeM", phenotypeM+0.000000001);
+		}
+		else {
+			ind.setValue("phenotypeM", 0);
+		}
+	}
+	for (ind in females)
+	{
+		phenotypeF = ind.sumOfMutationsOfType(m3)+ind.sumOfMutationsOfType(m4)*ind.getValue("condition");
+		if(phenotypeF+0.000000001>=0){
+			ind.setValue("phenotypeF", phenotypeF+0.000000001);
+		}
+		else {
+			ind.setValue("phenotypeF", 0);
+		}
+	}
+
+	females.fitnessScaling = 1;
+	
+	
+	alphaSurvM = CalphaM/(1+Kalpha*males.getValue("condition"));
+	sexSurvM = CsexM/(1+Ksex*males.getValue("condition"));
+	males.fitnessScaling = males.fitnessScaling*sb*exp(-(alphaSurvM+sexSurvM*males.getValue("phenotypeM")));
+	males[males.fitnessScaling<0].fitnessScaling=0;
+	
+	survivors = juveniles[juveniles.fitnessScaling>runif(juveniles.size())];
+	juveniles.fitnessScaling=0;
+	survivors.fitnessScaling=1;
+	
+	females = survivors[survivors.sex=="F"];
+	males = survivors[survivors.sex=="M"];
+	
+	if(males.size()==0 | females.size()==0){
+		catn("/PopDead");
+		sim.simulationFinished();
+	} else {	
+		nm = males.size();
+		nf = females.size();
+		harm = k*mean(males.getValue("phenotypeM"))*nm/(nf);
+		sim.setValue("eta",harm);
+	}
+
+}
+late() {
+	males=sim.subpopulations.subsetIndividuals(sex="M");
+	females=sim.subpopulations.subsetIndividuals(sex="F");
+	
+	if(males.size()==0 | females.size()==0){
+		catn("/PopDead");
+		sim.simulationFinished();
+	} else {
+		sim.setValue("f_size",c(sim.getValue("f_size"),females.size()));
+		sim.setValue("m_size",c(sim.getValue("m_size"),males.size()));
+		tm1v =mean(males.sumOfMutationsOfType(m1));
+		tm2v = mean(males.sumOfMutationsOfType(m2));
+		tm3v = mean(males.sumOfMutationsOfType(m6));
+		sim.setValue("harm_bar",c(sim.getValue("harm_bar"),mean(males.getValue("phenotypeM"))));
+		sim.setValue("resistance_bar",c(sim.getValue("resistance_bar"),mean(females.getValue("phenotypeF"))));
+		sim.setValue("tf1_bar",c(sim.getValue("tf1_bar"),mean(females.sumOfMutationsOfType(m3))));
+		sim.setValue("tf2_bar",c(sim.getValue("tf2_bar"),mean(females.sumOfMutationsOfType(m4))));
+		sim.setValue("tm1_bar",c(sim.getValue("tm1_bar"),tm1v));
+		sim.setValue("tm2_bar",c(sim.getValue("tm2_bar"),tm2v));
+		sim.setValue("tm3_bar",c(sim.getValue("tm3_bar"),tm3v));
+		sim.setValue("condition_bar_m",c(sim.getValue("condition_bar_m"),mean(males.getValue("condition"))));
+		sim.setValue("condition_bar_f",c(sim.getValue("condition_bar_f"),mean(females.getValue("condition"))));
+		if(sim.cycle%1==0){
+			catn(c("traits", sim.cycle, mean(males.getValue("phenotypeM")),tm1v,tm2v,tm3v,mean(males.getValue("condition")),var(males.getValue("condition")),mean(males.countOfMutationsOfType(m5)),var(males.countOfMutationsOfType(m5))));
+			catn(c("demo",sim.subpopulations.individualCount,males.size(),females.size(),males.size()/females.size()));
+		}
+	}
+	gen = sim.cycle;
+	catn(p1.individualCount);
+}
+
+5 late() {
+gen = sim.cycle;
+	writeFile("TTGoodGenesSSarch" + nlociC+"_rg=" + rg + "10k_aC=" + CalphaM + "_aK=" + Kalpha + "_k=" + k + "_sC=" + CsexM + "_sK=" + Ksex + "_r=" + r + "_mu=" + mu + "_b=" + b + "_d=" + d + "_u=" + u + "_s=" + s + "_murate=" + muR +  "_muT=" + tvar + ".txt", paste(c(paste(sim.getValue("m_size")[0:(gen-1)]),paste(sim.getValue("f_size")[0:(gen-1)]),paste(sim.getValue("harm_bar")[0:(gen-1)]),paste(sim.getValue("resistance_bar")[0:(gen-1)]),paste(sim.getValue("tf1_bar")[0:(gen-1)]),paste(sim.getValue("tf2_bar")[0:(gen-1)]),paste(sim.getValue("tm1_bar")[0:(gen-1)]),paste(sim.getValue("tm2_bar")[0:(gen-1)]),paste(sim.getValue("condition_bar_m")[0:(gen-1)]),paste(sim.getValue("condition_bar_f")[0:(gen-1)]))),append=F);
+}
